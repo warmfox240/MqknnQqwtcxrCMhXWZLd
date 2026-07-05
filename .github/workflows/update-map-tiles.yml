@@ -1,0 +1,43 @@
+name: Update Map Tiles
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 1' # Weekly on Monday at 04:00 UTC
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          large-packages: true
+
+      - uses: actions/checkout@v4
+
+      - name: Build generator image
+        run: DOCKER_BUILDKIT=0 docker build ./tile_generator -t map-tile-generator
+
+      - name: Generate tiles
+        run: docker run --rm -v "${{ github.workspace }}:/repo" map-tile-generator
+
+      - name: Fix ownership
+        run: sudo chown -R "$(id -u):$(id -g)" .
+
+      - name: Commit & push changed tiles
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No tile changes this week"
+          else
+            git commit -m "Weekly map tile update"
+            git push
+          fi
